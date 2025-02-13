@@ -15,6 +15,30 @@ find_package(Qt6 REQUIRED COMPONENTS Core Gui Qml Quick Sql )
 # Get the path of a known Qt library (e.g., Qt6Core)
 get_target_property(QSQLiteDriverPlugin_LOCATION Qt6::QSQLiteDriverPlugin LOCATION)
 
+# Function to print variable type
+function(print_variable_type var_name)
+    if(DEFINED ${var_name})
+        message(STATUS "${var_name} is defined.")
+        # Print the value
+        message(STATUS "${var_name} = ${${var_name}}")
+
+        # Infer the type
+        if(${var_name} MATCHES "^(TRUE|FALSE|ON|OFF|YES|NO)$")
+            message(STATUS "${var_name} is a BOOLEAN.")
+        elseif(${var_name} MATCHES ";")
+            message(STATUS "${var_name} is a LIST.")
+        elseif(IS_DIRECTORY ${${var_name}})
+            message(STATUS "${var_name} is a PATH (directory).")
+        elseif(EXISTS ${${var_name}})
+            message(STATUS "${var_name} is a PATH (file).")
+        else()
+            message(STATUS "${var_name} is a STRING.")
+        endif()
+    else()
+        message(STATUS "${var_name} is NOT defined.")
+    endif()
+endfunction()
+
 MESSAGE(STATUS "eton.debug:qt6 plugin path=[${Qt6_FOUND},${Qt6Sql_FOUND} , ${Qt6Sql_INCLUDE_DIRS},Qt6_DIR=${Qt6_DIR}],QSQLiteDriverPlugin_LOCATION=${QSQLiteDriverPlugin_LOCATION}")
 MESSAGE(STATUS "eton.debug:qt6 plugin path=[${Qt6_FOUND},${Qt6Core_FOUND} , ${Qt6Core_INCLUDE_DIRS},${Qt6Core_LIBRARIES}]")
 # We want to extract /path/to/qt/install
@@ -51,7 +75,7 @@ target_link_libraries(localstorageexample PRIVATE
     Qt6::Gui
     Qt6::Qml
     Qt6::Quick
-    Qt6::QSQLiteDriverPlugin
+    Qt6::Sql
 )
 
 # install(TARGETS localstorageexample
@@ -66,7 +90,7 @@ install(TARGETS ${MyApp}
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
 #Unlike most other CMake commands provided by Qt, qt6_deploy_qml_imports{qt_deploy_qml_imports()} can only be called from a deployment script. It cannot be called directly by the project.
-# qt_deploy_qml_imports(
+#  qt_deploy_qml_imports(
 #     TARGET ${MyApp}
 #     [QML_DIR qml_dir]
 #     PLUGINS_FOUND var_name4plugins
@@ -139,11 +163,52 @@ else()
     set(deploy_script42 ${deploy_script})
 endif()
 
+#test for __qt_internal_walk_libs
+if(debug__qt_internal_walk_libs)
+    get_target_property(link_libs ${MyApp} LINK_LIBRARIES)
+    foreach(lib ${link_libs})
+        MESSAGE(STATUS "eton.debug:link_libs=${lib}")
+            if(TARGET "${lib}")
+                list(APPEND dep_targets "${lib}")
+                    __qt_internal_walk_libs(
+                        "${lib}"
+                        lib_walked_targets
+                        _discarded_out_var
+                        "qt_private_link_library_targets"
+                        "collect_targets")
+                    foreach(lib_target IN LISTS lib_walked_targets)
+                        if(NOT TARGET "${lib_target}")
+                            __qt_internal_print_missing_dependency_target_warning(${target}
+                                ${lib_target})
+                            continue()
+                        endif()
+                        list(APPEND dep_targets ${lib_target})
+                    endforeach()
+                endif()
+    endforeach()
+endif()
+# __qt_internal_walk_libs.end
 
-# install(SCRIPT ${deploy_script}
-#     FILES ${QSQLiteDriverPlugin_LOCATION}  DESTINATION ${CMAKE_INSTALL_DOCDIR}/${QT_DEPLOY_PLUGINS_DIR}/sqldrivers}
-#     CODE "message(STATUS \"eton.debug:this will run after script. script-file=[\${deploy_script}]\")"
-# )
+if(0)
+    __qt_internal_collect_all_target_dependencies("${MyApp}" dep_targets)
+    list(APPEND dep_targets Qt6::Sql) #this will add the sqldrivers plugin to the list --eton@250213
+    foreach(dep_target ${dep_targets})
+        MESSAGE(STATUS "eton.debug:Xdep_target=${dep_target}")
+        get_target_property(xplugins ${dep_target} _qt_plugins)
+        if(xplugins)
+            MESSAGE(STATUS "eton.debug:Xplugins=${xplugins}")
+            list(APPEND plugin_targets ${xplugins})
+        endif()
+    endforeach()
+    # Print types of variables
+    print_variable_type(dep_targets)
+    MESSAGE(STATUS "eton.debug:plugin_targets=${plugin_targets}")
+endif()
+
+install(SCRIPT ${deploy_script}
+     #FILES ${QSQLiteDriverPlugin_LOCATION}  DESTINATION ${CMAKE_INSTALL_DOCDIR}/${QT_DEPLOY_PLUGINS_DIR}/sqldrivers}
+     CODE "message(STATUS \"eton.debug:this will run after script. script-file=[\${deploy_script}]\")"
+ )
 install(
     FILES ${QSQLiteDriverPlugin_LOCATION}  DESTINATION "plugins/sqldrivers"
 )
